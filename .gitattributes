@@ -1,2 +1,24 @@
-# Auto detect text files and perform LF normalization
+# BRFSS 2021 Health Data Analysis — Git attributes
+# Normalize line endings for source files across macOS, Windows, and Linux.
 * text=auto
+
+# Quarto, R, and documentation files
+*.qmd text eol=lf
+*.R text eol=lf
+*.Rmd text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.gitignore text eol=lf
+*.gitattributes text eol=lf
+
+# CSV is text; avoid displaying the large raw dataset as a GitHub diff.
+*.csv text eol=lf -diff
+
+# Reference documents and generated reports are binary.
+*.pdf binary
+*.html text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
