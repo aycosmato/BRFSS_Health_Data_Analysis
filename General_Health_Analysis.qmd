@@ -16,17 +16,8 @@ Date: 28 Sept 2026
 
 ------------------------------------------------------------------------
 
-## General Instructions
-
-------------------------------------------------------------------------
-
-### Academic Integrity
-
-We expect all work conducted at Eastern University to reflect honest and ethical behavior. The primary rule for ensuring academic integrity is that all submitted work must be original and produced by the individual student.
-
-To uphold academic integrity, it is not permitted to view another student's work prior to submitting your own, nor should you provide your work to someone who has not yet submitted their work. Collaborating with other students is only allowed when seeking clarification on a topic or assignment instructions. Collaborating on quizzes and exams is no permitted.
-
-See the syllabus for more information.
+## General Information
+This data came from The Center for Disease Control and prevention.  I used the data from Behavioral Risk Factor Surveillance System (BRFSS) 2021.  https://www.cdc.gov/brfss/annual_data/annual_2021.html
 
 ------------------------------------------------------------------------
 
