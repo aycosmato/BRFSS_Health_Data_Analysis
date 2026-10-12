@@ -1,72 +1,45 @@
-# 2021 BRFSS Data Analysis Projects
+# Exploring Health Outcomes with R | BRFSS 2021
 
-**Academic coursework | Private repository**
+**R · tidyverse · ggplot2 · Quarto · Linear & Logistic Regression**
 
-This repository contains two data analysis projects using the **2021 Behavioral Risk Factor Surveillance System (BRFSS)** dataset. The analyses were developed in **R** and documented using **Quarto (`.qmd`)**.
-
-> **Access:** This repository is intended to remain private in accordance with my school's guidance. Please do not redistribute coursework or supporting materials without appropriate permission.
-
-## Data source and attribution
-
-The data used in these projects comes from the **Centers for Disease Control and Prevention (CDC)**, specifically the **2021 Behavioral Risk Factor Surveillance System (BRFSS)**. BRFSS collects survey information about health-related behaviors, chronic health conditions, and preventive service use among U.S. adults.
-
-**Official source:** [CDC — 2021 BRFSS Survey Data and Documentation](https://www.cdc.gov/brfss/annual_data/annual_2021.html)
-
-The CDC page provides the 2021 survey data and supporting documentation, including the codebook and survey overview. The CSV in this repository is the dataset used for this coursework; its exact preparation and format should be checked against the original CDC files.
-
-**Suggested data citation:** Centers for Disease Control and Prevention (CDC). *Behavioral Risk Factor Surveillance System (BRFSS), 2021 survey data and documentation*. https://www.cdc.gov/brfss/annual_data/annual_2021.html
+I used the CDC's **2021 Behavioral Risk Factor Surveillance System (BRFSS)** data to investigate how everyday behaviors and demographic factors relate to self-reported health. These two case studies show my process—from cleaning survey responses and visualizing patterns to evaluating statistical models and communicating their limitations.
 
 ## Projects
 
-### Mental Health Analysis
-**File:** [`Mental_Health_Analysis.qmd`](Mental_Health_Analysis.qmd)
+### [Mental Health Analysis](Mental_Health_Analysis_Portfolio.qmd)
+**Question:** How are income, age, and exercise associated with the number of poor mental-health days reported in the past month?
 
-Explores associations between the number of days respondents reported poor mental health during the past 30 days (`MENTHLTH`) and three predictors:
+- Cleaned and analyzed **339,216** survey responses; explored distributions, group differences, and outliers.
+- Compared **three linear regression models** and generated predictions for hypothetical individuals.
+- **Key takeaway:** The strongest model explained **6.83%** of the variation—useful for exploring associations, but not precise individual predictions.
 
-- Household income category (`INCOME3`)
-- Age group (`_AGE_G`)
-- Exercise participation (`EXERANY2`)
+### [Health Outcome Predictor](Health_Outcome_Predictor_Portfolio.qmd)
+**Question:** How are fruit consumption and routine medical checkups related to self-rated general health?
 
-The analysis includes data preparation and cleaning, exploratory visualizations, summary statistics, examination of potential outliers, comparison of three regression models, model diagnostics, and predictions for three hypothetical individuals. Results describe **associations, not causal effects**. The selected linear regression model had limited explanatory power, and its predictions should be interpreted cautiously.
+- Cleaned and transformed survey variables, examined distributions, and evaluated modeling choices.
+- Applied **linear and logistic regression** and used the logistic model to predict outcomes for five hypothetical profiles.
+- **Key takeaway:** How a health outcome is defined changes the model and how its results should be interpreted.
 
-### General Health Analysis
-**File:** [`General_Health_Analysis.qmd`](General_Health_Analysis.qmd)
+## What I Demonstrated
 
-A separate R/Quarto analysis of the 2021 BRFSS data focused on general health. Refer to the Quarto file for its specific research questions, selected variables, methods, and findings.
+**Data preparation:** Cleaning, recoding, missing-value handling  
+**Exploration:** Summary statistics, visualization, outlier assessment  
+**Modeling:** Regression, diagnostics, model comparison, prediction  
+**Communication:** Reproducible Quarto reports and evidence-based interpretation
 
-## Repository contents
+## Explore the Repository
 
-| File | Description |
+| File | Contents |
 | --- | --- |
-| `Mental_Health_Analysis.qmd` | Mental health analysis in Quarto |
-| `Health_Outcome_Predictor_Project.qmd` | General health analysis in Quarto |
-| `brfss2021.csv` | BRFSS 2021 data used for the coursework |
-| `BRFSS_2021 Codebook.pdf` | Variable coding reference |
-| `BRFSS_2021 Data Overview.pdf` | Dataset overview |
-| `BRFSS_2021 Questionnaire.pdf` | Survey questionnaire |
-| `README.md` | Project overview and instructions |
-| `.gitattributes` | Git text and binary file handling rules |
+| [`Mental_Health_Analysis_Portfolio.qmd`](Mental_Health_Analysis_Portfolio.qmd) | Mental-health case study and R code |
+| [`Health_Outcome_Predictor_Portfolio.qmd`](Health_Outcome_Predictor_Portfolio.qmd) | General-health case study and R code |
+| `brfss2021.csv` | Working dataset |
+| `BRFSS_2021 Codebook.pdf`, `BRFSS_2021 Data Overview.pdf`, `BRFSS_2021 Questionnaire.pdf` | Survey documentation |
 
-## Tools and workflow
+To reproduce the work, open a `.qmd` file in RStudio with the CSV in the same folder, install the required R packages, and render with Quarto.
 
-- **R** for statistical analysis
-- **Quarto** for reproducible analysis documents
-- **tidyverse / dplyr / ggplot2** for data manipulation and visualization
-- **Base R statistical functions** for regression, diagnostics, and predictions
+## Data Source & Limitations
 
-## Working with the projects
+**Source:** Centers for Disease Control and Prevention (CDC), [2021 Behavioral Risk Factor Surveillance System (BRFSS)](https://www.cdc.gov/brfss/annual_data/annual_2021.html).
 
-1. Install R, Quarto, and the R packages required by the `.qmd` documents.
-2. Open either `.qmd` file in RStudio or another Quarto-compatible editor.
-3. Keep `brfss2021.csv` in the expected file location, or update the dataset path in the code.
-4. Run the code or render the Quarto document to reproduce the analysis.
-
-**Note:** Package requirements and data paths should be checked in the individual Quarto files. Reproducibility may depend on the versions of R and the packages used.
-
-## Data and interpretation
-
-BRFSS is a survey dataset. Findings from these analyses should be interpreted in light of survey design, self-reported responses, variable coding, and model assumptions. Unweighted analyses should not automatically be treated as representative population estimates.
-
-## Academic use
-
-These projects were completed for academic learning and demonstrate skills in data cleaning, exploratory analysis, visualization, statistical modeling, and interpretation. Repository visibility must remain **Private** in GitHub settings; this README and `.gitattributes` do not enforce access restrictions.
+These are **exploratory analyses of self-reported, observational data**. Associations do not demonstrate causation; the analyses are not survey-weighted national estimates. Model predictions should be interpreted cautiously.

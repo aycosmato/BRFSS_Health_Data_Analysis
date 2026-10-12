@@ -1,0 +1,323 @@
+---
+title: "Exploring General Health, Fruit Consumption, and Preventive Checkups"
+subtitle: "A BRFSS 2021 data analysis case study in R"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    code-fold: true
+    code-summary: "Show R code"
+    theme: cosmo
+execute:
+  warning: false
+  message: false
+---
+
+# From raw survey responses to interpretable health models
+
+This portfolio case study documents how I transformed public-health survey responses into a consistent analysis, examined the tradeoffs in data cleaning, and compared regression approaches for different outcome definitions. The emphasis is on **analytical decisions and their limitations**, not on claiming that the predictors cause better or worse health.
+
+**Tools:** R, tidyverse, ggplot2, psych, lm.beta, Quarto  
+**Data source:** [CDC BRFSS 2021 annual data](https://www.cdc.gov/brfss/annual_data/annual_2021.html)  
+**Input required:** `brfss2021.csv` in the same directory as this document.
+
+
+## 1. Framing the question
+
+This analysis explores a practical public-health question: **How do reported fruit consumption and time since a routine medical checkup relate to adults’ self-rated general health?** Rather than assuming these behaviors determine health, I used survey responses to describe patterns and build two different types of predictive models.
+
+The source is the [CDC’s 2021 Behavioral Risk Factor Surveillance System (BRFSS)](https://www.cdc.gov/brfss/annual_data/annual_2021.html). The working CSV used here is a course-provided subset; results should not be presented as nationally representative estimates without assessing the BRFSS survey weights and sampling design.
+
+The three starting fields are `FRUIT2` (reported fruit-eating frequency), `CHECKUP1` (time since last routine checkup), and `GENHLTH` (self-rated general health, coded 1 = excellent through 5 = poor).
+
+```{r}
+#| warning: false
+#| message: false
+library(tidyverse)
+library(psych)
+library(lm.beta)
+
+brf <- read_csv("brfss2021.csv", show_col_types = FALSE)
+```
+
+```{r}
+#| warning: false
+#| message: false
+#glimpse(brf)
+#summary(brf)
+#view(brf)
+
+brf_Q1 <- brf %>%
+  select(FRUIT2,CHECKUP1, GENHLTH) %>%
+  as.data.frame()
+
+#brf_Q1
+  
+Q1 <- brf_Q1 %>%
+  slice_head(n = 10) %>%
+  as.data.frame()
+
+Q1
+```
+
+## 2. Preparing a consistent analytical dataset
+
+I first selected the three variables, then removed non-substantive general-health and checkup responses. I retained checkup code `8` (never), because it is a meaningful category rather than a missing response. This produced **431,750 records** at that stage.
+
+I also calculated the share of respondents rating their health as good or very good and examined the distribution of excellent, very good, or good health across checkup categories. These summaries provide context before fitting any models.
+
+```{r}
+#| warning: false
+#| message: false
+brf_Q2 <- brf_Q1 %>%
+  filter(GENHLTH %in% 1:5) %>%
+  filter(CHECKUP1 %in% c(1, 2, 3, 4, 8)) %>%
+  arrange(GENHLTH) %>%
+  as.data.frame()
+
+Q2 <- brf_Q2 %>%
+  slice_head(n = 10) %>%
+  as.data.frame()
+
+Q2
+```
+
+```{r}
+#| warning: false
+#| message: false
+Q3 <- brf_Q2 %>%
+  summarise(
+    Count = sum(GENHLTH %in% c(2, 3)),
+    Percent = round(Count / n() * 100, 1)
+  ) %>%
+  as.data.frame()
+
+Q3
+```
+
+```{r}
+#| warning: false
+#| message: false
+#dataframe n, proportion health excellent, very good, good...lenghts of times since last checkup. round to 3 decimal places
+
+Q4 <- brf_Q2 %>%
+  group_by(CHECKUP1) %>%
+  summarise(
+    n = sum(GENHLTH %in% c(1, 2, 3)),
+    proportion = round(n / nrow(brf_Q2), 3)
+  ) %>%
+  as.data.frame()
+
+Q4
+```
+
+## 3. Translating fruit frequency into a comparable measure
+
+The raw fruit-frequency field mixes reports per day, week, and month. To make observations comparable, I converted it into an estimated **fruit-eating frequency per day** (`FRTDAY`), using seven days per week and 30 days per month. Responses meaning “less than once a month” were represented as 0.02 per day; “never” was coded as zero. This is a frequency measure, **not a measure of fruit servings or nutritional intake**.
+
+I excluded refusal and “don’t know” codes and preserved missing entries for subsequent handling. I then summarized the mean, median, standard deviation, and counts of daily fruit frequency by self-rated health category.
+
+```{r}
+#| warning: false
+#| message: false
+brf_Q5 <- brf_Q2 %>%
+  filter(!FRUIT2 %in% c(777, 999)) %>%
+  mutate(
+    FRTDAY = case_when(
+      FRUIT2 >= 101 & FRUIT2 <= 199 ~ FRUIT2 - 100,
+      FRUIT2 >= 201 & FRUIT2 <= 299 ~ round((FRUIT2 - 200) / 7, 2),
+      FRUIT2 == 300 ~ 0.02,
+      FRUIT2 >= 301 & FRUIT2 <= 399 ~ round((FRUIT2 - 300) / 30, 2),
+      FRUIT2 == 555 ~ 0,
+      is.na(FRUIT2) ~ NA_real_
+    )
+  ) %>%
+  select(FRTDAY, CHECKUP1, GENHLTH) %>%
+  arrange(GENHLTH) %>%
+  as.data.frame()
+
+Q5 <- brf_Q5 %>%
+  slice_head(n = 10) %>%
+  as.data.frame()
+
+Q5
+```
+
+```{r}
+#| warning: false
+#| message: false
+Q6 <- brf_Q5 %>%
+  group_by(GENHLTH) %>%
+  summarise(
+    Mean = round(mean(FRTDAY, na.rm = TRUE), 2),
+    Median = round(median(FRTDAY, na.rm = TRUE), 2),
+    SD = round(sd(FRTDAY, na.rm = TRUE), 2),
+    Count = n()
+  ) %>%
+  as.data.frame()
+
+
+Q6
+```
+
+## 4. Investigating unusual values and missingness
+
+A boxplot helped identify unusually high reported fruit frequencies. In this analysis I used a cutoff of **more than eight times per day**, which removed 2,027 observations from the 422,747-row dataset and left **420,720 rows**. This was a judgment-based threshold, not a formal statistical outlier rule; some removed values may represent genuine behavior.
+
+For remaining missing `FRTDAY` entries, I used **median imputation**. This allowed the modeling dataset to retain those records, but replacing missing values with a single median can reduce variability and may introduce bias if missingness is systematic.
+
+```{r}
+#| warning: false
+#| message: false
+brf_Q5 %>%
+  ggplot(aes(y = FRTDAY)) +
+  geom_boxplot()
+```
+
+```{r}
+#| warning: false
+#| message: false
+brf_Q5 %>%
+  summarise(
+    Count = sum(FRTDAY > 8, na.rm = TRUE),
+    Proportion = round(Count / n(), 3)
+  ) %>%
+  as.data.frame()
+```
+
+```{r}
+#| warning: false
+#| message: false
+brf_Q7c <- brf_Q5 %>%
+  filter( FRTDAY <= 8 | is.na(FRTDAY)) %>%
+  as.data.frame()
+```
+
+```{r}
+#| warning: false
+#| message: false
+brf_Q7 <- brf_Q7c %>%
+  mutate(
+    FRTDAY = if_else(
+      is.na(FRTDAY),
+      median(FRTDAY, na.rm = TRUE),
+      FRTDAY
+    )
+  ) %>%
+  as.data.frame()
+
+Q7 <- describe(brf_Q7)
+
+
+Q7
+```
+
+## 5. Modeling self-rated general health
+
+I first fitted a multiple linear regression using daily fruit frequency and routine-checkup category as predictors of the five-level `GENHLTH` score. I treated checkup timing as categorical and calculated standardized coefficients to help compare effect sizes on different scales.
+
+**Interpretation caveat:** The general-health scale is ordinal (excellent through poor), not truly continuous. Linear regression is therefore a simplifying approximation; coefficient signs refer to the numeric coding, where **lower scores indicate better health**. An ordinal regression would be a useful extension.
+
+```{r}
+#| warning: false
+#| message: false
+model_Q8 <- lm(
+  GENHLTH ~ FRTDAY + factor(CHECKUP1),
+  data = brf_Q7)
+
+standardized_Q8 <- lm.beta(model_Q8)
+
+Q8 <- summary(standardized_Q8)
+
+Q8
+```
+
+## 6. Reframing the outcome as a classification problem
+
+I then asked a more targeted question: **Can fruit frequency and recent checkup status help distinguish respondents reporting excellent or very good health from everyone else?**
+
+To do this, I created `binHealth` (1 for excellent/very good, 0 otherwise) and `binCheckup` (1 for a routine checkup within the past year, 0 otherwise). I fitted a logistic regression model to estimate associations with the **log-odds** of reporting excellent or very good health. This model is better matched to a binary outcome than linear regression.
+
+```{r}
+#| warning: false
+#| message: false
+brf_Q9 <- brf_Q7 %>%
+  mutate(
+    binHealth = if_else(GENHLTH %in% c(1, 2), 1, 0),
+    binCheckup = factor(if_else(CHECKUP1 == 1, 1, 0))
+  ) %>%
+  as.data.frame()
+
+model_Q9 <- glm(
+  binHealth ~ FRTDAY + binCheckup,
+  data = brf_Q9,
+  family = binomial
+)
+
+Q9 <- summary(model_Q9)
+
+
+Q9
+```
+
+## 7. Testing the model with hypothetical profiles
+
+Finally, I applied the logistic model to five hypothetical profiles. Their reported fruit frequency ranges from zero to six times per day, and the last two profiles have had a checkup within the past year.
+
+The original `predict()` call returns **log-odds**, not probabilities. I preserved that output below and added a probability view using `type = "response"` for easier interpretation. Because multiple characteristics change across the profiles, differences should not be attributed to fruit frequency alone.
+
+```{r}
+#| warning: false
+#| message: false
+new_people <- data.frame(
+  ID = c("Person1", "Person2", "Person3", "Person4", "Person5"),
+  FRTDAY = c(0, 1, 2, 3, 6),
+  binCheckup = factor(c(0, 0, 0, 1, 1), levels = c(0, 1))
+)
+
+Q10 <- round(predict(model_Q9, newdata = new_people), 2)
+
+Q10
+```
+
+### Probability-based view of the hypothetical profiles
+
+```{r}
+#| warning: false
+#| message: false
+profile_results <- new_people %>%
+  mutate(
+    predicted_log_odds = as.numeric(predict(model_Q9, newdata = new_people)),
+    predicted_probability = as.numeric(predict(model_Q9, newdata = new_people, type = "response"))
+  ) %>%
+  mutate(
+    predicted_log_odds = round(predicted_log_odds, 2),
+    predicted_probability = round(predicted_probability, 3)
+  )
+
+profile_results
+```
+
+## What this analysis demonstrates
+
+This project connects several parts of a data analysis workflow: decoding survey responses, standardizing incompatible frequency units, filtering nonresponses, evaluating extreme values, summarizing distributions, and choosing models based on the form of the outcome. It also illustrates why **model interpretation depends on variable coding**: lower `GENHLTH` values indicate better health, and logistic-model predictions are expressed as log-odds unless converted to probabilities.
+
+### Limitations and next steps
+
+- **Observational survey:** The relationships are associations, not evidence that fruit consumption or medical checkups cause changes in health.
+- **Self-report:** Fruit frequency, checkup timing, and general health may be subject to recall and reporting errors.
+- **Data preparation:** The eight-per-day cutoff and median imputation affect the sample and may influence fitted relationships.
+- **Outcome and model choices:** The five-category health measure is ordinal; ordinal regression would be worth comparing with the linear model.
+- **Survey design:** The analysis does not implement BRFSS sampling weights or complex survey design, so its summaries should not be described as population-level prevalence estimates.
+- **Predictive evaluation:** Future work could add a held-out test set and evaluate classification discrimination and calibration rather than relying only on in-sample model summaries.
+
+## Reproducing the analysis
+
+1. Install R and the packages `tidyverse`, `psych`, and `lm.beta`.
+2. Place the authorized `brfss2021.csv` input file alongside this `.qmd` file.
+3. Render the document in RStudio or with `quarto render Health_Outcome_Predictor_Portfolio.qmd`.
+4. Review the generated tables, model diagnostics, and conclusions before sharing.
+
+**Attribution:** Centers for Disease Control and Prevention (CDC), *Behavioral Risk Factor Surveillance System (BRFSS), 2021 Annual Data*. https://www.cdc.gov/brfss/annual_data/annual_2021.html
+
+*This is an independently written portfolio presentation of the author's analysis. It does not reproduce the course assignment instructions.*

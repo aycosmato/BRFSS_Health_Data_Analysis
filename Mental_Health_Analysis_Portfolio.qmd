@@ -1,0 +1,397 @@
+---
+title: "Exploring Mental Health in the 2021 BRFSS Survey"
+subtitle: "An R case study of income, age, physical activity, and self-reported mental health"
+author: "Avegail Cosmato"
+date: "2026-10-12"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    code-fold: true
+    code-summary: "Show R code"
+    theme: cosmo
+execute:
+  warning: false
+  message: false
+---
+
+## The question that started the analysis
+
+What can a large public-health survey tell us about the relationship between everyday circumstances and mental health? I explored whether **household income, age, and physical activity** were associated with the number of days adults reported that their mental health was not good in the preceding month.
+
+I approached this as an exploratory, observational analysis—not a test of whether any of these characteristics *cause* better or worse mental health. The goal was to find patterns, understand their size, and see how well a statistical model could summarize them.
+
+## Data and approach
+
+The data come from the **Centers for Disease Control and Prevention (CDC)**, **2021 Behavioral Risk Factor Surveillance System (BRFSS)**. The analysis uses a CSV subset of the survey containing 438,693 records before cleaning. The original source, survey documentation, and related resources are available on the [CDC's 2021 BRFSS annual data page](https://www.cdc.gov/brfss/annual_data/annual_2021.html).
+
+I used **R and the tidyverse** to prepare the data, **ggplot2** to explore distributions and relationships, and **linear regression** to compare increasingly detailed models. The source CSV should be named `brfss2021.csv` and placed alongside this document to reproduce the analysis. The dataset is not embedded in this document.
+
+## 1. Preparing the survey responses
+
+I first examined the available variables and chose `MENTHLTH` as the outcome: the reported number of days in the last 30 when mental health was not good. The explanatory variables were `INCOME3` (household income category), `_AGE_G` (age group), and `EXERANY2` (whether the respondent reported exercise or physical activity).
+
+The survey includes special response codes that cannot be treated as ordinary numbers. I removed refusals, don't-know responses, and missing values from the selected fields, then recoded `MENTHLTH = 88` (none) to **0 days**. Income remained an ordered 11-category variable, age an ordered six-group variable, and exercise a Yes/No factor. This produced **339,216 complete observations** for the analysis. Complete-case filtering makes the workflow straightforward but can introduce selection bias if excluded respondents differ systematically from included respondents.
+
+```{r}
+library(tidyverse)
+library(psych)
+library(lm.beta)
+
+brf <- read_csv("brfss2021.csv", show_col_types = FALSE) 
+```
+
+```{r}
+Q11a <- brf %>%
+  select(MENTHLTH, INCOME3, `_AGE_G`, EXERANY2) %>%
+  arrange(MENTHLTH)
+Q11a
+
+Q11b <- Q11a %>%
+  select(menthlth = MENTHLTH,
+         income = INCOME3,
+         age = `_AGE_G`,
+         exercise = EXERANY2)
+Q11b
+
+Q11c <- Q11b %>%
+  filter(!menthlth %in% c(77, 99)) %>%
+  filter(!income %in% c(77, 99)) %>%
+  filter(!exercise %in% c(7,9)) %>%
+  drop_na(menthlth, income, age, exercise)
+
+Q11 <- Q11c %>%
+  mutate(
+    menthlth = if_else(menthlth == 88, 0, menthlth),
+    income = factor(income, levels = 1:11, ordered = TRUE),
+    age = factor(age, levels = 1:6, ordered = TRUE),
+    exercise = factor(exercise, levels = c(1, 2),
+                      labels = c("Yes", "No")))
+Q11
+
+nrow(brf)
+nrow(Q11)
+```
+
+## 2. Discovering the shape of the data
+
+The first surprise was the distribution of poor mental-health days. **The median was zero, while the mean was approximately 4.21 days**. About **61.57%** of the cleaned responses reported zero poor mental-health days. This concentration at zero, combined with a smaller group reporting many poor days, created a strongly right-skewed distribution.
+
+I visualized each variable separately and then compared mental-health days across income and exercise groups. The charts helped identify patterns that would be obscured by a single overall average.
+
+```{r}
+Q12_menthlth <- Q11 %>%
+  ggplot(aes(x = menthlth)) +
+  geom_histogram(binwidth = 1) +
+  labs(
+    title = "Poor Mental Health Days Distribution",
+    x = "Past 30 Days Poor Mental Health",
+    y = "Count"
+  )
+Q12_menthlth
+
+Q12_income <- Q11 %>%
+  ggplot(aes(x = income)) + 
+  geom_bar() +
+  labs(
+    title = "Distribution of Household Income",
+    x = "Income Category", 
+    y = "Count"
+  )
+Q12_income
+
+Q12_age <- Q11 %>%
+  ggplot(aes(x = age)) +
+  geom_bar() +
+  labs(
+    title =  "Distribution of Age Groups",
+    x = "Age Group",
+    y = "Count"
+  ) +
+  scale_x_discrete(
+    labels = c("18-24", "25-34", "35-44", 
+               "45-54", "55-64", "65+")
+  )
+Q12_age
+
+Q12_exercise <- Q11 %>%
+  ggplot(aes(x = exercise)) +
+  geom_bar() +
+  labs(
+    title = "Distribution of Exercise",
+    x = "Exercise",
+    y = "Count"
+  )
+Q12_exercise
+
+Q12_menthlth_exercise <- Q11 %>%
+  ggplot(aes(x = exercise, y = menthlth)) +
+  geom_boxplot() +
+  labs(
+    title = "Poor Mental Health Days by Exercise",
+    x = "Exercise",
+    y = "Poor Mental Health Days"
+  )
+Q12_menthlth_exercise
+
+Q12_menthlth_income <- Q11 %>%
+  ggplot(aes(x = income, y = menthlth)) +
+  geom_boxplot() +
+  labs(
+    title = "Poor Mental Health Days by Income Category",
+    x = "Income Category",
+    y = "Poor Mental Health Days"
+  )
+Q12_menthlth_income
+
+Q11 %>%
+  group_by(income) %>%
+  summarise(
+    n = n(),
+    mean = mean(menthlth),
+    median = median(menthlth),
+    Q1 = quantile(menthlth, 0.25),
+    Q3 = quantile(menthlth, 0.75),
+    min = min(menthlth),
+    max = max(menthlth)
+  )
+```
+
+## 3. Quantifying patterns—and deciding what counts as an outlier
+
+Descriptive statistics added context to the plots. Respondents who reported exercising averaged **3.73** poor mental-health days, compared with **5.76** among those who did not. The mean also declined across income categories, from approximately **8.74 days** in the lowest category to **2.52 days** in the highest. These are group-level associations, not individual predictions or causal effects.
+
+The age distribution was uneven: respondents aged **65 and older** made up approximately **33.33%** of the cleaned sample. I kept this imbalance in mind when interpreting the results.
+
+Using the 1.5 × IQR rule, reports above **10 days** were flagged as statistical outliers: **45,543 records (13.43%)**. I chose **not to delete them**. Values from 0 to 30 are legitimate survey responses, and removing high values would disproportionately exclude people reporting more frequent mental-health difficulties. This choice preserves the outcome's real variation, although it makes ordinary linear regression assumptions harder to satisfy.
+
+```{r}
+Q13_menthlth <- Q11 %>%
+  summarise(
+    n = n(),
+    mean = mean(menthlth),
+    median = median(menthlth),
+    sd = sd(menthlth),
+    variance = var(menthlth),
+    Q1 = quantile(menthlth, 0.25),
+    Q3 = quantile(menthlth, 0.75),
+    IQR = IQR(menthlth),
+    min = min(menthlth),
+    max = max(menthlth)
+  )
+Q13_menthlth
+
+Q13_income <- Q11 %>%
+  count(income) %>%
+  mutate(percent = round(n / sum(n) * 100, 2))
+Q13_income
+Q13_income_center <- Q11 %>%
+  summarise(
+    median_category = median(as.numeric(income)),
+    modal_category = names(which.max(table(income)))
+  )
+Q13_income_center
+
+Q13_income_spread <- Q11 %>%
+  summarise(
+    Q1 = quantile(as.numeric(income), 0.25),
+    Q3 = quantile(as.numeric(income), 0.75))
+Q13_income_spread
+
+Q13_age <- Q11 %>%
+  count(age) %>%
+  mutate(percent = round(n / sum(n) * 100, 2))
+Q13_age
+
+Q13_age_summary <- Q11 %>%
+  summarise(
+    median_age = median(as.numeric(age)),
+    mode_age = names(which.max(table(age))),
+    Q1 = quantile(as.numeric(age), 0.25),
+    Q3 = quantile(as.numeric(age), 0.75)
+  )
+Q13_age_summary
+
+Q13_exercise <- Q11 %>%
+  count(exercise) %>%
+  mutate(percent = round(n / sum(n) * 100, 2))
+Q13_exercise
+
+Q13_menthlth_exercise <- Q11 %>%
+  group_by(exercise) %>%
+  summarise(
+    n = n(),
+    mean = mean(menthlth),
+    median = median(menthlth),
+    sd = sd(menthlth), 
+    Q1 = quantile(menthlth, 0.25),
+    Q3 = quantile(menthlth, 0.75),
+    IQR = IQR(menthlth))
+Q13_menthlth_exercise
+
+Q13_methlth_income <- Q11 %>%
+  group_by(income) %>%
+  summarise(
+    n = n(),
+    mean = mean(menthlth),
+    median = median(menthlth),
+    sd = sd(menthlth),
+    Q1 = quantile(menthlth, 0.25),
+    Q3 = quantile(menthlth, 0.75),
+    IQR = IQR(menthlth))
+Q13_methlth_income
+
+Q13_outliers <- Q11 %>%
+  summarise(
+    Q1 = quantile(menthlth, 0.25),
+    Q3 = quantile(menthlth, 0.75),
+    IQR = IQR(menthlth),
+    lower = Q1 - 1.5 * IQR,
+    upper = Q3 + 1.5 * IQR)
+Q13_outliers
+
+Q13_potential_outliers <- Q11 %>%
+  summarise(
+    total = n(),
+    potential_outliers = 
+      sum(menthlth > Q13_outliers$upper),
+    percent_outliers =
+      round(mean(menthlth > Q13_outliers$upper) * 100, 2)
+  )
+Q13_potential_outliers
+```
+
+## 4. Testing whether additional predictors improve the model
+
+I built three nested linear regression models, adding information in stages:
+
+1. **Income only**
+2. **Income and exercise**
+3. **Income, exercise, and age group**
+
+To estimate a single income trend, I represented the ordered income categories by their category numbers. This is a modeling simplification: the categories do **not** represent equally spaced dollar amounts. In the third model, age was treated as a categorical predictor, allowing age groups to have different estimated effects rather than forcing a straight-line age trend.
+
+| Model | Predictors | R² | Residual standard error |
+|:--|:--|--:|--:|
+| 1 | Income | 0.0284 | 8.08 days |
+| 2 | Income + exercise | 0.0328 | 8.06 days |
+| 3 | Income + exercise + age | **0.0683** | **7.91 days** |
+
+Model 3 performed best **among the three models tested**, with the highest R² and lowest residual standard error and AIC. But it explained only **6.83%** of the variation in poor mental-health days. The improvement is meaningful as a comparison between these models, not evidence that the final model can predict any individual's mental health accurately.
+
+The residual and Q–Q diagnostic plots also showed substantial departures from typical linear regression assumptions, consistent with the bounded, zero-heavy outcome. I therefore treated the regression primarily as a tool for exploring associations.
+
+```{r}
+Q14_model1 <- lm(menthlth ~ income, data = Q11)
+summary(Q14_model1)
+
+Q14_model1 <- Q11 %>%
+  mutate(income_num = as.numeric(income)) %>%
+  lm(menthlth ~ income_num, data = .)
+summary(Q14_model1)
+
+plot(Q14_model1, which = 1)
+
+plot(Q14_model1, which = 2)
+
+Q14_model2 <- Q11 %>%
+  mutate(income_num = as.numeric(income)) %>%
+  lm(menthlth ~ income_num + exercise, data = .)
+summary(Q14_model2)
+
+plot(Q14_model2, which = 1)
+
+plot(Q14_model2, which = 2)
+
+Q14_model3 <- Q11 %>%
+  mutate(income_num = as.numeric(income)) %>%
+  lm(menthlth ~ income_num + exercise + factor(age, ordered = FALSE), 
+     data = .)
+summary(Q14_model3)
+
+plot(Q14_model3, which = 1)
+
+plot(Q14_model3, which = 2)
+
+Q14_comparison <- data.frame(
+  Model = c("Model 1", "Model 2", "Model 3"),
+  R_squared = c(
+    summary(Q14_model1)$r.squared,
+    summary(Q14_model2)$r.squared,
+    summary(Q14_model3)$r.squared
+  ),
+Adjusted_R_Squared = c(
+  summary(Q14_model1)$adj.r.squared,
+  summary(Q14_model2)$adj.r.squared,
+  summary(Q14_model3)$adj.r.squared
+))
+Q14_comparison
+
+Q14_AIC <- AIC(
+  Q14_model1,
+  Q14_model2,
+  Q14_model3
+)
+
+Q14_AIC
+
+Q14_ANOVA <- anova(
+  Q14_model1,
+  Q14_model2,
+  Q14_model3
+)
+Q14_ANOVA
+
+Q14_RSE <- data.frame(
+  Model = c("Model 1", "Model 2", "Model 3"),
+  RSE = c(
+    sigma(Q14_model1),
+    sigma(Q14_model2),
+    sigma(Q14_model3)
+  )
+)
+Q14_RSE
+```
+
+## 5. Turning the model into illustrative predictions
+
+To see what the fitted model implies for different combinations of characteristics, I constructed three hypothetical profiles. These are **illustrations of the model's estimated conditional mean**, not forecasts of a real person's future mental-health experience.
+
+| Profile | Income category | Exercise | Age group | Predicted poor mental-health days (rounded) |
+|:--|--:|:--|:--|--:|
+| A | 3 | No | 25–34 | 9 |
+| B | 7 | Yes | 35–44 | 5 |
+| C | 11 | No | 65+ | 1 |
+
+The third profile has a lower prediction despite reporting no exercise. That is not a contradiction: the model considers **income, exercise, and age together**. Because all three inputs differ between these profiles, the differences cannot be attributed to one predictor in isolation. Rounded whole-day values are for presentation; the underlying fitted estimates are continuous.
+
+```{r}
+Q15_individuals <- data.frame(
+  income_num = c(3, 7, 11),
+  exercise = factor(c("No", "Yes", "No"),
+                    levels = levels(Q11$exercise)),
+  age = factor(c(2, 3, 6), 
+               levels = levels(Q11$age), 
+               ordered = TRUE ))
+Q15_individuals
+Q15_predictions <- Q15_individuals %>%
+  mutate(
+    predicted_menthlth = round(predict(
+      Q14_model3,
+      newdata = Q15_individuals
+    )
+  ))
+Q15_predictions
+```
+
+## What I learned
+
+The strongest lesson from this project was that **finding a statistically detectable relationship is not the same as building a strong predictive model**. Income, physical activity, and age were associated with reported poor mental-health days in the survey, but most individual variation remained unexplained. Self-reported responses, broad income and age categories, a binary exercise measure, missing-data exclusions, and the unusual distribution of the outcome all limit interpretation.
+
+This work strengthened my ability to move through an end-to-end analysis: define a research question, interpret a codebook, clean survey data, visualize distributions, make defensible outlier decisions, compare models, inspect diagnostics, and communicate results with appropriate caution. A future extension could test approaches better suited to bounded, zero-heavy count outcomes and account for the BRFSS survey design and weights.
+
+## Source and reproducibility
+
+**Data source:** Centers for Disease Control and Prevention, *Behavioral Risk Factor Surveillance System (BRFSS), 2021 Annual Data*. [Official CDC source](https://www.cdc.gov/brfss/annual_data/annual_2021.html).
+
+**Tools:** R, tidyverse/ggplot2, psych, and lm.beta. To reproduce the analysis, place an appropriately authorized copy of `brfss2021.csv` in the working directory and render this Quarto document in an R environment with the required packages installed. This case study is an independent portfolio presentation of the analysis and does not reproduce the course assignment instructions.
