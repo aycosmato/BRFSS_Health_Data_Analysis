@@ -39,7 +39,7 @@ A separate R/Quarto analysis of the 2021 BRFSS data focused on general health. R
 | File | Description |
 | --- | --- |
 | `Mental_Health_Analysis.qmd` | Mental health analysis in Quarto |
-| `General_Health_Analysis.qmd` | General health analysis in Quarto |
+| `Health_Outcome_Predictor_Project.qmd` | General health analysis in Quarto |
 | `brfss2021.csv` | BRFSS 2021 data used for the coursework |
 | `BRFSS_2021 Codebook.pdf` | Variable coding reference |
 | `BRFSS_2021 Data Overview.pdf` | Dataset overview |
